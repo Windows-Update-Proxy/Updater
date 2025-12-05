@@ -51,13 +51,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// Route: Initial payload delivery
-app.get('/payload', (req, res) => {
-  // Redirect naar je PowerShell script op GitHub of host het hier
-  res.type('text/plain');
-  res.send('# Payload would be hosted here or redirect to GitHub raw URL');
-});
-
 // Route: Beacon ontvangen van client
 app.post('/beacon', async (req, res) => {
   try {
