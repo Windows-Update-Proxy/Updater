@@ -5,8 +5,5 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: ADMIN_TOKEN
-        generateValue: true
-        # Of stel in via Render dashboard
       - key: NODE_ENV
         value: production
